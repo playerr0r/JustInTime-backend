@@ -50,6 +50,7 @@ func main() {
 	r.POST("/login", loginHandler(db))
 	r.GET("/projects/:code", projectsHandler(db))
 	r.GET("/tasks/:id", tasksHandler(db))
+	r.GET("/profile/:role", employeeRoleHandler(db))
 
 	r.Run()
 }
@@ -115,5 +116,21 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"task": task})
+	})
+}
+
+func employeeRoleHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		role := c.Param("role")
+
+		var users []User
+
+		err := db.Select(&users, "SELECT name, code FROM users WHERE role = $1", role)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"users": users})
 	})
 }

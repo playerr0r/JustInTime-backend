@@ -49,6 +49,7 @@ func main() {
 
 	r.POST("/login", loginHandler(db))
 	r.GET("/projects/:code", projectsHandler(db))
+	r.GET("/tasks/:id", tasksHandler(db))
 
 	r.Run()
 }
@@ -99,5 +100,20 @@ func projectsHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"projects": projects})
+	})
+}
+
+func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		code := c.Param("id")
+
+		var task Task
+		err := db.Select(&task, "SELECT name, descr, date, date_act, status FROM projects WHERE id = $1", code)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"task": task})
 	})
 }

@@ -5,19 +5,21 @@ import (
 	// "fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 type User struct {
-	ID           int    `json:"id"`
-	Role         string `json:"role"`
-	Code         string `json:"code"`
-	Login        string `json:"login"`
-	Password     string `json:"password"`
-	Projects_ids []int  `json:"projects_ids"`
+	ID           int           `json:"id"`
+	Role         string        `json:"role"`
+	Code         string        `json:"code"`
+	Login        string        `json:"login"`
+	Password     string        `json:"password"`
+	Projects_ids pq.Int64Array `json:"projects_ids"`
 }
 
 type Project struct {
@@ -49,16 +51,17 @@ func main() {
 
 	r.POST("/login", loginHandler(db))
 
-	r.GET("/projects/:id", projectsHandler(db))
+	r.GET("/projects/", projectsHandler(db))
 	r.GET("/projects/:id/tasks", projectTasksHandler(db))
 
 	r.GET("/tasks/:id", tasksHandler(db))
 
-	r.GET("/profile/:id", employeeHandler(db))
+	r.GET("/profile/:id", profileHandler(db))
 
 	r.Run()
 }
 
+// /login
 func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		var user User
@@ -83,21 +86,38 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
+// /projects/?ids=0,1...
 func projectsHandler(db *sqlx.DB) gin.HandlerFunc {
-	return gin.HandlerFunc(func(c *gin.Context) {
-		id := c.Param("id")
+	return func(c *gin.Context) {
+		idsParam := c.DefaultQuery("ids", "")
+		idsStr := strings.Split(idsParam, ",")
 
-		var project Project
-		err := db.Select(&project, "SELECT name FROM projects WHERE id = $1", id)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+		var ids []int
+		for _, idStr := range idsStr {
+			id, err := strconv.Atoi(idStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+				return
+			}
+			ids = append(ids, id)
 		}
 
-		c.JSON(http.StatusOK, gin.H{"projects": project})
-	})
+		projects := make(map[int]string)
+		for _, id := range ids {
+			var project_name string
+			err := db.Get(&project_name, "SELECT name FROM projects WHERE id = $1", id)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			projects[id] = project_name
+		}
+
+		c.JSON(http.StatusOK, gin.H{"projects": projects})
+	}
 }
 
+// /projects/:id/tasks
 func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		projectID := c.Param("id")
@@ -113,12 +133,13 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// /tasks/:id
 func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		code := c.Param("id")
+		id := c.Param("id")
 
 		var task Task
-		err := db.Select(&task, "SELECT * FROM projects WHERE id = $1", code)
+		err := db.Select(&task, "SELECT * FROM tasks WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -128,18 +149,19 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
-func employeeHandler(db *sqlx.DB) gin.HandlerFunc {
+// /profile/:id
+func profileHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		role := c.Param("role")
+		id := c.Param("id")
 
-		var users []User
+		var user []User
 
-		err := db.Select(&users, "SELECT name, code FROM users WHERE role = $1", role)
+		err := db.Select(&user, "SELECT name, code FROM users WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"users": users})
+		c.JSON(http.StatusOK, gin.H{"users": user})
 	})
 }

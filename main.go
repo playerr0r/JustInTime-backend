@@ -12,18 +12,18 @@ import (
 )
 
 type User struct {
-	ID       int    `json:"id"`
-	Role     string `json:"role"`
-	Code     string `json:"code"`
-	Login    string `json:"login"`
-	Password string `json:"password"`
+	ID           int    `json:"id"`
+	Role         string `json:"role"`
+	Code         string `json:"code"`
+	Login        string `json:"login"`
+	Password     string `json:"password"`
+	Projects_ids []int  `json:"projects_ids"`
 }
 
 type Project struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Codes_users string `json:"codes_users"`
-	Tasks       []Task `json:"tasks"`
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Tasks []Task `json:"tasks"`
 }
 
 type Task struct {
@@ -48,9 +48,13 @@ func main() {
 	r := gin.Default()
 
 	r.POST("/login", loginHandler(db))
-	r.GET("/projects/:code", projectsHandler(db))
+
+	r.GET("/projects/:id", projectsHandler(db))
+	r.GET("/projects/:id/tasks", projectTasksHandler(db))
+
 	r.GET("/tasks/:id", tasksHandler(db))
-	r.GET("/profile/:role", employeeRoleHandler(db))
+
+	r.GET("/profile/:id", employeeHandler(db))
 
 	r.Run()
 }
@@ -63,9 +67,9 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		row := db.QueryRow("SELECT id, role, code FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
+		row := db.QueryRow("SELECT id, role, code, projects_ids FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
 
-		err := row.Scan(&user.ID, &user.Role, &user.Code)
+		err := row.Scan(&user.ID, &user.Role, &user.Code, &user.Projects_ids)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid login or password"})
@@ -81,27 +85,32 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 
 func projectsHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		code := c.Param("code")
+		id := c.Param("id")
 
-		var projects []Project
-		err := db.Select(&projects, "SELECT id, name FROM projects WHERE codes_users LIKE $1", "%"+code+"%")
+		var project Project
+		err := db.Select(&project, "SELECT name FROM projects WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		for i := range projects {
-			var tasks []Task
-			err = db.Select(&tasks, "SELECT id, name, status FROM tasks WHERE project_id = $1 AND empl_code = $2", projects[i].ID, code)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-			projects[i].Tasks = tasks
+		c.JSON(http.StatusOK, gin.H{"projects": project})
+	})
+}
+
+func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		projectID := c.Param("id")
+
+		var tasks []Task
+		err := db.Select(&tasks, `SELECT * FROM tasks WHERE project_id = $1`, projectID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"projects": projects})
-	})
+		c.JSON(http.StatusOK, gin.H{"tasks": tasks})
+	}
 }
 
 func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
@@ -109,7 +118,7 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		code := c.Param("id")
 
 		var task Task
-		err := db.Select(&task, "SELECT name, descr, date, date_act, status FROM projects WHERE id = $1", code)
+		err := db.Select(&task, "SELECT * FROM projects WHERE id = $1", code)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -119,7 +128,7 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
-func employeeRoleHandler(db *sqlx.DB) gin.HandlerFunc {
+func employeeHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		role := c.Param("role")
 

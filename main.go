@@ -15,6 +15,7 @@ import (
 
 type User struct {
 	ID           int           `json:"id"`
+	Name         string        `json:"name"`
 	Role         string        `json:"role"`
 	Code         string        `json:"code"`
 	Login        string        `json:"login"`
@@ -70,9 +71,9 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		row := db.QueryRow("SELECT id, role, code, projects_ids FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
+		row := db.QueryRow("SELECT id, name, role, code, projects_ids FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
 
-		err := row.Scan(&user.ID, &user.Role, &user.Code, &user.Projects_ids)
+		err := row.Scan(&user.ID, &user.Name, &user.Role, &user.Code, &user.Projects_ids)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid login or password"})
@@ -139,7 +140,7 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		id := c.Param("id")
 
 		var task Task
-		err := db.Select(&task, "SELECT * FROM tasks WHERE id = $1", id)
+		err := db.Get(&task, "SELECT * FROM tasks WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -154,9 +155,12 @@ func profileHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		id := c.Param("id")
 
-		var user []User
+		var user User
+		user.Login = ""
+		user.Password = ""
+		user.ID, _ = strconv.Atoi(id)
 
-		err := db.Select(&user, "SELECT name, code FROM users WHERE id = $1", id)
+		err := db.Get(&user, "SELECT name, role, code, projects_ids  FROM users WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

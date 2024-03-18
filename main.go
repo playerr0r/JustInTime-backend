@@ -2,7 +2,10 @@ package main
 
 import (
 	"database/sql"
-	// "fmt"
+
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -21,6 +24,7 @@ type User struct {
 	Login        string        `json:"login"`
 	Password     string        `json:"password"`
 	Projects_ids pq.Int64Array `json:"projects_ids"`
+	Avatar       []byte        `json:"avatar"`
 }
 
 type Project struct {
@@ -59,6 +63,8 @@ func main() {
 
 	r.GET("/profile/:id", profileHandler(db))
 
+	r.POST("/profile/:id/update_avatar", profileUpdateAvatarHandler(db))
+
 	r.Run()
 }
 
@@ -71,9 +77,9 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		row := db.QueryRow("SELECT id, name, role, code, projects_ids FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
+		row := db.QueryRow("SELECT id, name, role, code, projects_ids, avatar FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
 
-		err := row.Scan(&user.ID, &user.Name, &user.Role, &user.Code, &user.Projects_ids)
+		err := row.Scan(&user.ID, &user.Name, &user.Role, &user.Code, &user.Projects_ids, &user.Avatar)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid login or password"})
@@ -83,6 +89,7 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
+		user.Avatar = []byte(base64.StdEncoding.EncodeToString(user.Avatar))
 		c.JSON(http.StatusOK, gin.H{"user": user})
 	})
 }
@@ -160,12 +167,47 @@ func profileHandler(db *sqlx.DB) gin.HandlerFunc {
 		user.Password = ""
 		user.ID, _ = strconv.Atoi(id)
 
-		err := db.Get(&user, "SELECT name, role, code, projects_ids  FROM users WHERE id = $1", id)
+		err := db.Get(&user, "SELECT name, role, code, projects_ids, avatar FROM users WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"users": user})
+		// user.Avatar = []byte(base64.StdEncoding.EncodeToString(user.Avatar))
+		c.JSON(http.StatusOK, gin.H{"user": user})
+	})
+}
+
+// Define a struct to hold the incoming JSON data
+type AvatarData struct {
+	Avatar string `json:"avatar"`
+}
+
+// /profile/:id/update_avatar/:avatar
+func profileUpdateAvatarHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var jsonData AvatarData
+		if err := c.BindJSON(&jsonData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		avatarDecoded, err := base64.StdEncoding.DecodeString(jsonData.Avatar)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		fmt.Println(hex.EncodeToString(avatarDecoded[:100]))
+
+		_, err = db.Exec("UPDATE users SET avatar = $1 WHERE id = $2", avatarDecoded, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Avatar updated"})
 	})
 }

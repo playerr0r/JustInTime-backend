@@ -4,8 +4,6 @@ import (
 	"database/sql"
 
 	"encoding/base64"
-	"encoding/hex"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -56,14 +54,18 @@ func main() {
 
 	r.POST("/login", loginHandler(db))
 
+	r.POST("/register", registerHandler(db))
+	r.GET("/register/check/:login", checkLoginHandler(db))
+
 	r.GET("/projects/", projectsHandler(db))
 	r.GET("/projects/:id/tasks", projectTasksHandler(db))
 
 	r.GET("/tasks/:id", tasksHandler(db))
+	r.POST("/tasks/:id/updateStatus", taskStatusUpdateHandler(db))
 
 	r.GET("/profile/:id", profileHandler(db))
 
-	r.POST("/profile/:id/update_avatar", profileUpdateAvatarHandler(db))
+	r.POST("/profile/:id/updateAvatar", profileUpdateAvatarHandler(db))
 
 	r.Run()
 }
@@ -91,6 +93,45 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 
 		user.Avatar = []byte(base64.StdEncoding.EncodeToString(user.Avatar))
 		c.JSON(http.StatusOK, gin.H{"user": user})
+	})
+}
+
+// /register
+func registerHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		var user User
+		if err := c.BindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("INSERT INTO users (name, role, code, login, password) VALUES ($1, $2, $3, $4, $5)", user.Name, user.Role, user.Code, user.Login, user.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User registered"})
+	})
+}
+
+// /register/check/:login
+func checkLoginHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		login := c.Param("login")
+
+		var count int
+		err := db.Get(&count, "SELECT COUNT(*) FROM users WHERE login = $1", login)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		if count > 0 {
+			c.JSON(http.StatusOK, gin.H{"message": "Login exists"})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"message": "Login is free"})
+		}
 	})
 }
 
@@ -157,6 +198,27 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
+// /tasks/:id/updateStatus
+func taskStatusUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var task Task
+		if err := c.BindJSON(&task); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE tasks SET status = $1 WHERE id = $2", task.Status, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Task status updated"})
+	})
+}
+
 // /profile/:id
 func profileHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
@@ -199,8 +261,6 @@ func profileUpdateAvatarHandler(db *sqlx.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		fmt.Println(hex.EncodeToString(avatarDecoded[:100]))
 
 		_, err = db.Exec("UPDATE users SET avatar = $1 WHERE id = $2", avatarDecoded, id)
 		if err != nil {

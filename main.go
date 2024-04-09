@@ -32,14 +32,27 @@ type Project struct {
 }
 
 type Task struct {
+	ID         int            `json:"id"`
+	Name       string         `json:"name"`
+	Descr      sql.NullString `json:"descr"`
+	Date       string         `json:"date"`
+	Date_act   sql.NullString `json:"date_act"`
+	Empl_id    sql.NullString `json:"empl_id"`
+	Project_id int            `json:"projectId"`
+	Status     string         `json:"status"`
+	Priority   sql.NullString `json:"priority"`
+}
+
+type TaskResponse struct {
 	ID         int    `json:"id"`
 	Name       string `json:"name"`
 	Descr      string `json:"descr"`
 	Date       string `json:"date"`
 	Date_act   string `json:"date_act"`
-	Empl_code  string `json:"empl_code"`
+	Empl_id    string `json:"empl_id"`
 	Project_id int    `json:"projectId"`
 	Status     string `json:"status"`
+	Priority   string `json:"priority"`
 }
 
 func main() {
@@ -49,6 +62,8 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+
+	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.Default()
 
@@ -62,6 +77,7 @@ func main() {
 
 	r.GET("/tasks/:id", tasksHandler(db))
 	r.POST("/tasks/:id/updateStatus", taskStatusUpdateHandler(db))
+	r.POST("/tasks/new", taskNewHandler(db))
 
 	r.GET("/profile/:id", profileHandler(db))
 
@@ -166,6 +182,13 @@ func projectsHandler(db *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+func nullStringToString(ns sql.NullString) string {
+	if ns.Valid {
+		return strings.Trim(ns.String, "{}")
+	}
+	return ""
+}
+
 // /projects/:id/tasks
 func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -178,7 +201,23 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"tasks": tasks})
+		var tasksResponse []TaskResponse
+		for _, task := range tasks {
+			taskResponse := TaskResponse{
+				ID:         task.ID,
+				Name:       task.Name,
+				Descr:      nullStringToString(task.Descr),
+				Date:       task.Date,
+				Date_act:   nullStringToString(task.Date_act),
+				Empl_id:    nullStringToString(task.Empl_id),
+				Project_id: task.Project_id,
+				Status:     task.Status,
+				Priority:   nullStringToString(task.Priority),
+			}
+			tasksResponse = append(tasksResponse, taskResponse)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"tasks": tasksResponse})
 	}
 }
 
@@ -194,7 +233,18 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"task": task})
+		var taskResponse TaskResponse
+		taskResponse.ID = task.ID
+		taskResponse.Name = task.Name
+		taskResponse.Descr = nullStringToString(task.Descr)
+		taskResponse.Date = task.Date
+		taskResponse.Date_act = nullStringToString(task.Date_act)
+		taskResponse.Empl_id = nullStringToString(task.Empl_id)
+		taskResponse.Project_id = task.Project_id
+		taskResponse.Status = task.Status
+		taskResponse.Priority = nullStringToString(task.Priority)
+
+		c.JSON(http.StatusOK, gin.H{"task": taskResponse})
 	})
 }
 
@@ -216,6 +266,26 @@ func taskStatusUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Task status updated"})
+	})
+}
+
+// /tasks/new
+func taskNewHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		var task Task
+		if err := c.BindJSON(&task); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("INSERT INTO tasks (name, descr, date, date_act, empl_id, project_id, status, priority) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+			task.Name, task.Descr, task.Date, task.Date_act, task.Empl_id, task.Project_id, task.Status, task.Priority)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Task added"})
 	})
 }
 

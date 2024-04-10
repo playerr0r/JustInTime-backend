@@ -74,6 +74,7 @@ func main() {
 
 	r.GET("/projects/", projectsHandler(db))
 	r.GET("/projects/:id/tasks", projectTasksHandler(db))
+	r.POST("/projects/new", projectNewHandler(db))
 
 	r.GET("/tasks/:id", tasksHandler(db))
 	r.POST("/tasks/:id/updateStatus", taskStatusUpdateHandler(db))

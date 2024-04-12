@@ -74,10 +74,11 @@ func main() {
 
 	r.GET("/projects/", projectsHandler(db))
 	r.GET("/projects/:id/tasks", projectTasksHandler(db))
-	r.POST("/projects/new", projectNewHandler(db))
+	// r.POST("/projects/new", projectNewHandler(db))
 
 	r.GET("/tasks/:id", tasksHandler(db))
 	r.POST("/tasks/:id/updateStatus", taskStatusUpdateHandler(db))
+	r.POST("/tasks/:id/assign/", taskAssignHandler(db))
 	r.POST("/tasks/new", taskNewHandler(db))
 
 	r.GET("/profile/:id", profileHandler(db))
@@ -196,7 +197,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		projectID := c.Param("id")
 
 		var tasks []Task
-		err := db.Select(&tasks, `SELECT * FROM tasks WHERE project_id = $1`, projectID)
+		err := db.Select(&tasks, `SELECT * FROM tasks WHERE project_id = $1 ORDER BY date`, projectID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -270,10 +271,32 @@ func taskStatusUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
+// /tasks/:id/assign/?empl_id=
+func taskAssignHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+		empl_id := c.DefaultQuery("empl_id", "")
+
+		_, err := db.Exec("UPDATE tasks SET empl_id = $1 WHERE id = $2", empl_id, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Task assigned"})
+	})
+}
+
 // /tasks/new
 func taskNewHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		var task Task
+
+		task.Date_act = sql.NullString{String: "", Valid: false}
+		task.Empl_id = sql.NullString{String: "", Valid: false}
+		task.Priority = sql.NullString{String: "", Valid: false}
+		task.Descr = sql.NullString{String: "", Valid: false}
+
 		if err := c.BindJSON(&task); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

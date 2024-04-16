@@ -38,6 +38,7 @@ type Task struct {
 	Date       string         `json:"date"`
 	Date_act   sql.NullString `json:"date_act"`
 	Empl_id    sql.NullString `json:"empl_id"`
+	Avatar     []byte         `json:"avatar"`
 	Project_id int            `json:"projectId"`
 	Status     string         `json:"status"`
 	Priority   sql.NullString `json:"priority"`
@@ -50,6 +51,7 @@ type TaskResponse struct {
 	Date       string `json:"date"`
 	Date_act   string `json:"date_act"`
 	Empl_id    string `json:"empl_id"`
+	Avatar     []byte `json:"avatar"`
 	Project_id int    `json:"projectId"`
 	Status     string `json:"status"`
 	Priority   string `json:"priority"`
@@ -153,7 +155,7 @@ func checkLoginHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
-// /projects/?ids=0,1...
+// /projects/?ids=
 func projectsHandler(db *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idsParam := c.DefaultQuery("ids", "")
@@ -197,7 +199,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		projectID := c.Param("id")
 
 		var tasks []Task
-		err := db.Select(&tasks, `SELECT * FROM tasks WHERE project_id = $1 ORDER BY date`, projectID)
+		err := db.Select(&tasks, `SELECT tasks.id, tasks.name, tasks.descr, tasks.date, tasks.date_act, tasks.empl_id, users.avatar, tasks.project_id, tasks.status, tasks.priority from tasks left join users on tasks.empl_id = users.id WHERE project_id = $1`, projectID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -212,6 +214,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 				Date:       task.Date,
 				Date_act:   nullStringToString(task.Date_act),
 				Empl_id:    nullStringToString(task.Empl_id),
+				Avatar:     task.Avatar,
 				Project_id: task.Project_id,
 				Status:     task.Status,
 				Priority:   nullStringToString(task.Priority),
@@ -334,7 +337,6 @@ func profileHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
-// Define a struct to hold the incoming JSON data
 type AvatarData struct {
 	Avatar string `json:"avatar"`
 }

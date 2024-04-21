@@ -69,23 +69,41 @@ func main() {
 
 	r := gin.Default()
 
-	r.POST("/login", loginHandler(db))
+	// Группировка маршрутов для регистрации и логина
+	authRoutes := r.Group("/auth")
+	{
+		authRoutes.POST("/login", loginHandler(db))
+		authRoutes.POST("/register", registerHandler(db))
+		authRoutes.GET("/register/check/:login", checkLoginHandler(db))
+	}
 
-	r.POST("/register", registerHandler(db))
-	r.GET("/register/check/:login", checkLoginHandler(db))
+	// Группировка маршрутов для проектов
+	projectRoutes := r.Group("/projects")
+	{
+		projectRoutes.GET("/", projectsHandler(db))
+		projectRoutes.GET("/:id/tasks", projectTasksHandler(db))
+		projectRoutes.DELETE("/:id", projectDeleteHandler(db))
+		projectRoutes.POST("/new", projectNewHandler(db))
+	}
 
-	r.GET("/projects/", projectsHandler(db))
-	r.GET("/projects/:id/tasks", projectTasksHandler(db))
-	// r.POST("/projects/new", projectNewHandler(db))
+	// Группировка маршрутов для задач
+	taskRoutes := r.Group("/tasks")
+	{
+		taskRoutes.GET("/:id", tasksHandler(db))
+		taskRoutes.DELETE("/:id", taskDeleteHandler(db))
+		taskRoutes.POST("/:id/updateStatus", taskStatusUpdateHandler(db))
+		taskRoutes.POST("/:id/assign/", taskAssignHandler(db))
+		taskRoutes.POST("/new", taskNewHandler(db))
+	}
 
-	r.GET("/tasks/:id", tasksHandler(db))
-	r.POST("/tasks/:id/updateStatus", taskStatusUpdateHandler(db))
-	r.POST("/tasks/:id/assign/", taskAssignHandler(db))
-	r.POST("/tasks/new", taskNewHandler(db))
-
-	r.GET("/profile/:id", profileHandler(db))
-
-	r.POST("/profile/:id/updateAvatar", profileUpdateAvatarHandler(db))
+	// Профиль пользователя
+	profileRoutes := r.Group("/profile")
+	{
+		profileRoutes.GET("/:id", profileHandler(db))
+		profileRoutes.POST("/:id/updateAvatar", profileUpdateAvatarHandler(db))
+		profileRoutes.POST("/:id/addProject", profileAddProjectHandler(db))
+		profileRoutes.POST("/:id/removeProject", profileRemoveProjectHandler(db))
+	}
 
 	r.Run()
 }
@@ -226,6 +244,52 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// /projects/:id DELETE
+func projectDeleteHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		_, err := db.Exec("DELETE FROM projects WHERE id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err = db.Exec("DELETE FROM tasks WHERE project_id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err = db.Exec("UPDATE users SET projects_ids = array_remove(projects_ids, $1)", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Project deleted"})
+	})
+}
+
+// /projects/new
+func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		var project Project
+		if err := c.BindJSON(&project); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("INSERT INTO projects (name) VALUES ($1)", project.Name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Project added"})
+	})
+}
+
 // /tasks/:id
 func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
@@ -250,6 +314,21 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		taskResponse.Priority = nullStringToString(task.Priority)
 
 		c.JSON(http.StatusOK, gin.H{"task": taskResponse})
+	})
+}
+
+// /tasks/:id
+func taskDeleteHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		_, err := db.Exec("DELETE FROM tasks WHERE id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Task deleted"})
 	})
 }
 
@@ -365,5 +444,47 @@ func profileUpdateAvatarHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Avatar updated"})
+	})
+}
+
+// /profile/:id/addProject/:project_id
+func profileAddProjectHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+		project_id := c.Param("project_id")
+
+		var projects_ids pq.Int64Array
+		err := db.Get(&projects_ids, "SELECT projects_ids FROM users WHERE id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		project_id_int, _ := strconv.Atoi(project_id)
+		projects_ids = append(projects_ids, int64(project_id_int))
+
+		_, err = db.Exec("UPDATE users SET projects_ids = $1 WHERE id = $2", projects_ids, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Project added to user"})
+	})
+}
+
+// /profile/:id/removeProject/:project_id
+func profileRemoveProjectHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+		project_id := c.Param("project_id")
+
+		_, err := db.Exec("UPDATE users SET projects_ids = array_remove(projects_ids, $1) WHERE id = $2", project_id, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Project removed from user"})
 	})
 }

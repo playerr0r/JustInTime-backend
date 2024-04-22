@@ -102,7 +102,7 @@ func main() {
 		profileRoutes.GET("/:id", profileHandler(db))
 		profileRoutes.POST("/:id/updateAvatar", profileUpdateAvatarHandler(db))
 		profileRoutes.POST("/:id/addProject", profileAddProjectHandler(db))
-		profileRoutes.POST("/:id/removeProject", profileRemoveProjectHandler(db))
+		profileRoutes.DELETE("/:id/removeProject", profileRemoveProjectHandler(db))
 	}
 
 	r.Run()

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -58,8 +59,14 @@ type TaskResponse struct {
 }
 
 func main() {
+	// Get environment variables
+	database_host := os.Getenv("DATABASE_HOST")
+	database_user := os.Getenv("DATABASE_USER")
+	database_password := os.Getenv("DATABASE_PASSWORD")
+	database_name := os.Getenv("DATABASE_NAME")
+
 	// Create a new router
-	db, err := sqlx.Open("postgres", "host=localhost port=5433 user=postgres password=0921 dbname=postgres sslmode=disable")
+	db, err := sqlx.Open("postgres", "host="+database_host+" user="+database_user+" password="+database_password+" dbname="+database_name+" sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}

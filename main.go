@@ -86,6 +86,8 @@ func main() {
 
 	r := gin.Default()
 
+	r.GET("/", startPageHandler())
+
 	// Группировка маршрутов для регистрации и логина
 	authRoutes := r.Group("/auth")
 	{
@@ -123,6 +125,12 @@ func main() {
 	}
 
 	r.Run()
+}
+
+func startPageHandler() gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		fmt.Print("Service is live")
+	})
 }
 
 // /login

@@ -103,6 +103,8 @@ func main() {
 		projectRoutes.GET("/:id/tasks", projectTasksHandler(db))
 		projectRoutes.DELETE("/:id", projectDeleteHandler(db))
 		projectRoutes.POST("/new", projectNewHandler(db))
+		// projectRoutes.POST("/:id/column", projectNewColumnHandler(db))
+		// projectRoutes.DELETE("/:id/column", projectDeleteColumnHandler(db))
 	}
 
 	// Группировка маршрутов для задач
@@ -249,7 +251,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		var columns []string
-		err = db.Select(&columns, "SELECT columns FROM projects WHERE id = $1", projectID)
+		err = db.Select(&columns, "SELECT columns_ FROM projects WHERE id = $1", projectID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

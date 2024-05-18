@@ -248,6 +248,13 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
+		var columns []string
+		err = db.Select(&columns, "SELECT columns FROM projects WHERE id = $1", projectID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		var tasksResponse []TaskResponse
 		for _, task := range tasks {
 			taskResponse := TaskResponse{
@@ -265,7 +272,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 			tasksResponse = append(tasksResponse, taskResponse)
 		}
 
-		c.JSON(http.StatusOK, gin.H{"tasks": tasksResponse})
+		c.JSON(http.StatusOK, gin.H{"columns": columns, "tasks": tasksResponse})
 	}
 }
 

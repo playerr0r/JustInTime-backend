@@ -103,8 +103,9 @@ func main() {
 		projectRoutes.GET("/:id/tasks", projectTasksHandler(db))
 		projectRoutes.DELETE("/:id", projectDeleteHandler(db))
 		projectRoutes.POST("/new", projectNewHandler(db))
-		// projectRoutes.POST("/:id/column", projectNewColumnHandler(db))
-		// projectRoutes.DELETE("/:id/column", projectDeleteColumnHandler(db))
+		projectRoutes.POST("/:id/column", projectNewColumnHandler(db))
+		projectRoutes.DELETE("/:id/column", projectDeleteColumnHandler(db))
+		projectRoutes.POST("/:id/column/update", projectUpdateColumnHandler(db))
 	}
 
 	// Группировка маршрутов для задач
@@ -301,7 +302,7 @@ func projectDeleteHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Project deleted"})
+		c.JSON(http.StatusOK, gin.H{"message": "Project" + id + " deleted"})
 	})
 }
 
@@ -320,7 +321,71 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Project added"})
+		c.JSON(http.StatusOK, gin.H{"message": "Project " + project.Name + " added"})
+	})
+}
+
+// create new column /projects/:id/column
+func projectNewColumnHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var name string
+		if err := c.BindJSON(&name); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE projects SET columns_ = array_append(columns_, $1) WHERE id = $2", name, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Column + " + name + " added"})
+	})
+}
+
+// delete column /projects/:id/column
+func projectDeleteColumnHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var name string
+		if err := c.BindJSON(&name); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE projects SET columns_ = array_remove(columns_, $1) WHERE id = $2", name, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Column + " + name + " deleted"})
+	})
+}
+
+// update name of column /projects/:id/column/update
+func projectUpdateColumnHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var old_name string
+		var new_name string
+		if err := c.BindJSON(&gin.H{"old_name": &old_name, "new_name": &new_name}); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE projects SET columns_ = array_replace(columns_, $1, $2) WHERE id = $3", old_name, new_name, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Column" + old_name + " updated to " + new_name})
 	})
 }
 

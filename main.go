@@ -392,7 +392,7 @@ func projectUpdateColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 		id := c.Param("id")
 
 		var columnUpdate ColumnUpdate
-		if err := c.BindJSON(&gin.H{"old_name": columnUpdate.Old_name, "new_name": columnUpdate.New_name}); err != nil {
+		if err := c.BindJSON(&columnUpdate); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			fmt.Println("error: ", err.Error())
 			return

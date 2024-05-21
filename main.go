@@ -325,26 +325,30 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
+type Column struct {
+	Name string `json:"name"`
+}
+
 // create new column /projects/:id/column
 func projectNewColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		id := c.Param("id")
 
-		var name string
-		if err := c.BindJSON(&name); err != nil {
+		var column Column
+		if err := c.BindJSON(&column); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		_, err := db.Exec("UPDATE projects SET columns_ = array_append(columns_, $1) WHERE id = $2", name, id)
+		_, err := db.Exec("UPDATE projects SET columns_ = array_append(columns_, $1) WHERE id = $2", column.Name, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Column + " + name + " added"})
+		c.JSON(http.StatusOK, gin.H{"message": "Column + " + column.Name + " added"})
 	})
 }
 

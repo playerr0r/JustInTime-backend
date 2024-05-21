@@ -363,6 +363,12 @@ func projectDeleteColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
+		_, err = db.Exec("DELETE FROM tasks WHERE project_id = $1 AND status = $2", id, name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{"message": "Column + " + name + " deleted"})
 	})
 }
@@ -380,6 +386,12 @@ func projectUpdateColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		_, err := db.Exec("UPDATE projects SET columns_ = array_replace(columns_, $1, $2) WHERE id = $3", old_name, new_name, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err = db.Exec("UPDATE tasks SET status = $1 WHERE project_id = $2 AND status = $3", new_name, id, old_name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

@@ -333,12 +333,14 @@ func projectNewColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 		var name string
 		if err := c.BindJSON(&name); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
 		_, err := db.Exec("UPDATE projects SET columns_ = array_append(columns_, $1) WHERE id = $2", name, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 

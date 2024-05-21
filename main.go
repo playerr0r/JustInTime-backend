@@ -357,26 +357,33 @@ func projectDeleteColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		id := c.Param("id")
 
-		var name string
-		if err := c.BindJSON(&name); err != nil {
+		var column Column
+		if err := c.BindJSON(&column); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		_, err := db.Exec("UPDATE projects SET columns_ = array_remove(columns_, $1) WHERE id = $2", name, id)
+		_, err := db.Exec("UPDATE projects SET columns_ = array_remove(columns_, $1) WHERE id = $2", column.Name, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		_, err = db.Exec("DELETE FROM tasks WHERE project_id = $1 AND status = $2", id, name)
+		_, err = db.Exec("DELETE FROM tasks WHERE project_id = $1 AND status = $2", id, column.Name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Column + " + name + " deleted"})
+		c.JSON(http.StatusOK, gin.H{"message": "Column + " + column.Name + " deleted"})
 	})
+}
+
+type ColumnUpdate struct {
+	Old_name string `json:"old_name"`
+	New_name string `json:"new_name"`
 }
 
 // update name of column /projects/:id/column/update
@@ -384,26 +391,28 @@ func projectUpdateColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		id := c.Param("id")
 
-		var old_name string
-		var new_name string
-		if err := c.BindJSON(&gin.H{"old_name": &old_name, "new_name": &new_name}); err != nil {
+		var columnUpdate ColumnUpdate
+		if err := c.BindJSON(&gin.H{"old_name": columnUpdate.Old_name, "new_name": columnUpdate.New_name}); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		_, err := db.Exec("UPDATE projects SET columns_ = array_replace(columns_, $1, $2) WHERE id = $3", old_name, new_name, id)
+		_, err := db.Exec("UPDATE projects SET columns_ = array_replace(columns_, $1, $2) WHERE id = $3", columnUpdate.Old_name, columnUpdate.New_name, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		_, err = db.Exec("UPDATE tasks SET status = $1 WHERE project_id = $2 AND status = $3", new_name, id, old_name)
+		_, err = db.Exec("UPDATE tasks SET status = $1 WHERE project_id = $2 AND status = $3", columnUpdate.New_name, id, columnUpdate.Old_name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Column" + old_name + " updated to " + new_name})
+		c.JSON(http.StatusOK, gin.H{"message": "Column" + columnUpdate.Old_name + " updated to " + columnUpdate.New_name})
 	})
 }
 

@@ -320,7 +320,19 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec("INSERT INTO projects (name) VALUES ($1)", project.Name)
+		_, err := db.Exec("select * from projects where name = $1", project.Name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		if err != sql.ErrNoRows {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Project with this name already exists"})
+			return
+		}
+
+		_, err = db.Exec("INSERT INTO projects (name) VALUES ($1)", project.Name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			fmt.Println("error: ", err.Error())

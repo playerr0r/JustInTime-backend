@@ -317,6 +317,7 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 		var project NewProject
 		if err := c.BindJSON(&project); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 

@@ -306,10 +306,15 @@ func projectDeleteHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
+type NewProject struct {
+	Name   string   `json:"name"`
+	Logins []string `json:"logins"`
+}
+
 // /projects/new
 func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		var project Project
+		var project NewProject
 		if err := c.BindJSON(&project); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -319,6 +324,37 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
+		}
+
+		var projectID int
+		err = db.Get(&projectID, "SELECT id FROM projects WHERE name = $1", project.Name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		for _, login := range project.Logins {
+			var userID int
+			err = db.Get(&userID, "SELECT id FROM users WHERE login = $1", login)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			var projects_ids pq.Int64Array
+			err = db.Get(&projects_ids, "SELECT projects_ids FROM users WHERE id = $1", userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			projects_ids = append(projects_ids, int64(projectID))
+
+			_, err = db.Exec("UPDATE users SET projects_ids = $1 WHERE id = $2", projects_ids, userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Project " + project.Name + " added"})

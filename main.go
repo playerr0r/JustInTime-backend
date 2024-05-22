@@ -321,14 +321,16 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec("select * from projects where name = $1", project.Name)
-		if err != nil {
+		row := db.QueryRow("select * from projects where name = $1", project.Name)
+		var tempProject NewProject
+		err := row.Scan(&tempProject)
+		if err == sql.ErrNoRows {
+			// Проект с таким именем не найден, продолжить создание
+		} else if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			fmt.Println("error: ", err.Error())
 			return
-		}
-
-		if err != sql.ErrNoRows {
+		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Project with this name already exists"})
 			return
 		}
@@ -352,9 +354,14 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			var userID int
 			err = db.Get(&userID, "SELECT id FROM users WHERE login = $1", login)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				fmt.Println("error: ", err.Error())
-				return
+				if err == sql.ErrNoRows {
+					// Если пользователь не найден, пропустить этот логин и перейти к следующему
+					continue
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					fmt.Println("error: ", err.Error())
+					return
+				}
 			}
 
 			var projects_ids pq.Int64Array

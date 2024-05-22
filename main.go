@@ -323,6 +323,7 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 		_, err := db.Exec("INSERT INTO projects (name) VALUES ($1)", project.Name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
@@ -330,6 +331,7 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 		err = db.Get(&projectID, "SELECT id FROM projects WHERE name = $1", project.Name)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
@@ -338,6 +340,7 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			err = db.Get(&userID, "SELECT id FROM users WHERE login = $1", login)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				fmt.Println("error: ", err.Error())
 				return
 			}
 
@@ -345,6 +348,7 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			err = db.Get(&projects_ids, "SELECT projects_ids FROM users WHERE id = $1", userID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				fmt.Println("error: ", err.Error())
 				return
 			}
 
@@ -353,6 +357,7 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			_, err = db.Exec("UPDATE users SET projects_ids = $1 WHERE id = $2", projects_ids, userID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				fmt.Println("error: ", err.Error())
 				return
 			}
 		}

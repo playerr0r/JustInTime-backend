@@ -681,10 +681,15 @@ func profileAddProjectHandler(db *sqlx.DB) gin.HandlerFunc {
 // /profile/:id/projects
 func profileProjectsHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		id := c.Param("id")
+		idStr := c.Param("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			return
+		}
 
 		var projects []Project
-		err := db.Select(&projects, `SELECT projects.id, projects.name FROM projects WHERE projects.id = ANY((SELECT projects_ids FROM users WHERE id = $1))`, id)
+		err = db.Select(&projects, `SELECT projects.id, projects.name FROM projects WHERE projects.id = ANY((SELECT projects_ids FROM users WHERE id = $1))`, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

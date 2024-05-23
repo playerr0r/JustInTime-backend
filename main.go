@@ -688,14 +688,43 @@ func profileProjectsHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		var projects []Project
-		err = db.Select(&projects, `SELECT projects.id, projects.name FROM projects WHERE projects.id = ANY((SELECT projects_ids FROM users WHERE id = $1))`, id)
+		var projectsIDsStr string
+		err = db.Get(&projectsIDsStr, "SELECT projects_ids FROM users WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"projects": projects})
+		// Удалить фигурные скобки и разделить строку по запятой
+		projectsIDsStr = strings.Trim(projectsIDsStr, "{}")
+		projectsIDsArr := strings.Split(projectsIDsStr, ",")
+
+		// Преобразовать каждый элемент в int и добавить в projectIDs
+		var projectIDs []int
+		for _, idStr := range projectsIDsArr {
+			id, err := strconv.Atoi(idStr)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			projectIDs = append(projectIDs, id)
+		}
+
+		query, args, err := sqlx.In("SELECT name FROM projects WHERE id IN (?)", projectIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		query = db.Rebind(query)
+		var projectNames []string
+		err = db.Select(&projectNames, query, args...)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"projects": projectNames})
 	})
 }
 

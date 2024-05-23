@@ -106,6 +106,7 @@ func main() {
 		projectRoutes.POST("/:id/column", projectNewColumnHandler(db))
 		projectRoutes.DELETE("/:id/column", projectDeleteColumnHandler(db))
 		projectRoutes.POST("/:id/column/update", projectUpdateColumnHandler(db))
+		projectRoutes.GET("/:id/users", projectUsersHandler(db))
 	}
 
 	// Группировка маршрутов для задач
@@ -474,6 +475,22 @@ func projectUpdateColumnHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Column" + columnUpdate.Old_name + " updated to " + columnUpdate.New_name})
+	})
+}
+
+// /projects/:id/users
+func projectUsersHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var users []User
+		err := db.Select(&users, `SELECT users.id, users.name, users.role, users.code, users.projects_ids, users.avatar FROM users WHERE $1 = ANY(users.projects_ids)`, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"users": users})
 	})
 }
 

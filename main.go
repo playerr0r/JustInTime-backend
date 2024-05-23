@@ -125,6 +125,7 @@ func main() {
 		profileRoutes.GET("/:id", profileHandler(db))
 		profileRoutes.POST("/:id/updateAvatar", profileUpdateAvatarHandler(db))
 		profileRoutes.POST("/:id/addProject", profileAddProjectHandler(db))
+		profileRoutes.GET("/:id/projects", profileProjectsHandler(db))
 		profileRoutes.DELETE("/:id", profileRemoveProjectHandler(db))
 	}
 
@@ -674,6 +675,22 @@ func profileAddProjectHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Project added to user"})
+	})
+}
+
+// /profile/:id/projects
+func profileProjectsHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var projects []Project
+		err := db.Select(&projects, `SELECT projects.id, projects.name FROM projects WHERE projects.id = ANY((SELECT projects_ids FROM users WHERE id = $1))`, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"projects": projects})
 	})
 }
 

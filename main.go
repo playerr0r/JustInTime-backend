@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"os"
 
 	"encoding/base64"
 	"log"
@@ -61,17 +60,17 @@ type TaskResponse struct {
 
 func main() {
 	// Get environment variables
-	databaseHost := os.Getenv("DATABASE_HOST")
-	databaseUser := os.Getenv("DATABASE_USER")
-	databasePassword := os.Getenv("DATABASE_PASSWORD")
-	databasePort := "5432"
-	databaseName := os.Getenv("DATABASE_NAME")
+	// databaseHost := os.Getenv("DATABASE_HOST")
+	// databaseUser := os.Getenv("DATABASE_USER")
+	// databasePassword := os.Getenv("DATABASE_PASSWORD")
+	// databasePort := "5432"
+	// databaseName := os.Getenv("DATABASE_NAME")
 
-	// databaseHost := "localhost"
-	// databaseUser := "postgres"
-	// databasePort := "5433"
-	// databasePassword := "0921"
-	// databaseName := "postgres"
+	databaseHost := "localhost"
+	databaseUser := "postgres"
+	databasePort := "5433"
+	databasePassword := "0921"
+	databaseName := "postgres"
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", databaseHost, databasePort, databaseUser, databasePassword, databaseName)
 
@@ -107,6 +106,9 @@ func main() {
 		projectRoutes.DELETE("/:id/column", projectDeleteColumnHandler(db))
 		projectRoutes.POST("/:id/column/update", projectUpdateColumnHandler(db))
 		projectRoutes.GET("/:id/users", projectUsersHandler(db))
+		projectRoutes.POST("/:id/addUser", projectAddUserHandler(db))
+		projectRoutes.DELETE("/:id/removeUser", projectDeleteUserHandler(db))
+		projectRoutes.POST("/:id/rename", projectRenameHandler(db))
 	}
 
 	// Группировка маршрутов для задач
@@ -492,6 +494,107 @@ func projectUsersHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"users": users})
+	})
+}
+
+// /projects/:id/addUser
+func projectAddUserHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		var user_login User
+		if err := c.BindJSON(&user_login); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var userID int
+		err := db.Get(&userID, "SELECT id FROM users WHERE login = $1", user_login.Login)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		var projects_ids pq.Int64Array
+		err = db.Get(&projects_ids, "SELECT projects_ids FROM users WHERE id = $1", userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		idStr := c.Param("id")
+		projectId, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+			return
+		}
+
+		projects_ids = append(projects_ids, projectId)
+
+		_, err = db.Exec("UPDATE users SET projects_ids = $1 WHERE id = $2", projects_ids, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User added to project"})
+	})
+}
+
+// /projects/:id/removeUser
+func projectDeleteUserHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		var user_name User
+		if err := c.BindJSON(&user_name); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		fmt.Println(user_name.Name)
+
+		var userID int
+		err := db.Get(&userID, "SELECT id FROM users WHERE name = $1", user_name.Name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		idStr := c.Param("id")
+		projectId, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		_, err = db.Exec("UPDATE users SET projects_ids = array_remove(projects_ids, $1) WHERE id = $2", projectId, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User removed from project"})
+	})
+}
+
+// /projects/:id/rename
+func projectRenameHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var project NewProject
+		if err := c.BindJSON(&project); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE projects SET name = $1 WHERE id = $2", project.Name, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Project renamed"})
 	})
 }
 

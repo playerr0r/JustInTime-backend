@@ -710,21 +710,21 @@ func profileProjectsHandler(db *sqlx.DB) gin.HandlerFunc {
 			projectIDs = append(projectIDs, id)
 		}
 
-		query, args, err := sqlx.In("SELECT name FROM projects WHERE id IN (?)", projectIDs)
+		query, args, err := sqlx.In("SELECT id, name FROM projects WHERE id IN (?)", projectIDs)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
 		query = db.Rebind(query)
-		var projectNames []string
-		err = db.Select(&projectNames, query, args...)
+		var projects []Project
+		err = db.Select(&projects, query, args...)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"projects": projectNames})
+		c.JSON(http.StatusOK, gin.H{"projects": projects})
 	})
 }
 

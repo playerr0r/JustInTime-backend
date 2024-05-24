@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
 
 	"encoding/base64"
 	"log"
@@ -45,6 +46,14 @@ type Task struct {
 	Priority   sql.NullString `json:"priority"`
 }
 
+type Grant struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Descr      string `json:"descr"`
+	Num        int    `json:"num"`
+	Project_id int    `json:"projectId"`
+}
+
 type TaskResponse struct {
 	ID         int    `json:"id"`
 	Name       string `json:"name"`
@@ -60,17 +69,17 @@ type TaskResponse struct {
 
 func main() {
 	// Get environment variables
-	// databaseHost := os.Getenv("DATABASE_HOST")
-	// databaseUser := os.Getenv("DATABASE_USER")
-	// databasePassword := os.Getenv("DATABASE_PASSWORD")
-	// databasePort := "5432"
-	// databaseName := os.Getenv("DATABASE_NAME")
+	databaseHost := os.Getenv("DATABASE_HOST")
+	databaseUser := os.Getenv("DATABASE_USER")
+	databasePassword := os.Getenv("DATABASE_PASSWORD")
+	databasePort := "5432"
+	databaseName := os.Getenv("DATABASE_NAME")
 
-	databaseHost := "localhost"
-	databaseUser := "postgres"
-	databasePort := "5433"
-	databasePassword := "0921"
-	databaseName := "postgres"
+	// databaseHost := "localhost"
+	// databaseUser := "postgres"
+	// databasePort := "5433"
+	// databasePassword := "0921"
+	// databaseName := "postgres"
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", databaseHost, databasePort, databaseUser, databasePassword, databaseName)
 
@@ -109,6 +118,10 @@ func main() {
 		projectRoutes.POST("/:id/addUser", projectAddUserHandler(db))
 		projectRoutes.DELETE("/:id/removeUser", projectDeleteUserHandler(db))
 		projectRoutes.POST("/:id/rename", projectRenameHandler(db))
+		projectRoutes.GET("/:id/grants", projectGrantsHandler(db))
+		projectRoutes.POST("/:id/addGrant", projectAddGrantHandler(db))
+		projectRoutes.DELETE("/:id/removeGrant", projectDeleteGrantHandler(db))
+		projectRoutes.POST("/:id/editGrant", projectEditGrantHandler(db))
 	}
 
 	// Группировка маршрутов для задач
@@ -595,6 +608,91 @@ func projectRenameHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Project renamed"})
+	})
+}
+
+// /projects/:id/grants
+func projectGrantsHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var grants []Grant
+		err := db.Select(&grants, "SELECT * FROM grants WHERE project_id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"grants": grants})
+	})
+}
+
+// /projects/:id/addGrant
+func projectAddGrantHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var grant Grant
+		if err := c.BindJSON(&grant); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		_, err := db.Exec("INSERT INTO grants (name, descr, num, project_id) VALUES ($1, $2, $3, $4)", grant.Name, grant.Descr, grant.Num, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Grant added"})
+	})
+}
+
+// /projects/:id/removeGrant
+func projectDeleteGrantHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var grant Grant
+		if err := c.BindJSON(&grant); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("DELETE FROM grants WHERE name = $1 AND project_id = $2", grant.Name, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Grant deleted"})
+	})
+}
+
+// /projects/:id/editGrant
+func projectEditGrantHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var grant Grant
+		if err := c.BindJSON(&grant); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		fmt.Println(grant.Num)
+
+		_, err := db.Exec("UPDATE grants SET descr = $1, num = $2, name = $3 WHERE id = $4 AND project_id = $5", grant.Descr, grant.Num, grant.Name, grant.ID, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Grant updated"})
 	})
 }
 

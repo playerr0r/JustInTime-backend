@@ -25,6 +25,7 @@ type User struct {
 	Password     string        `json:"password"`
 	Projects_ids pq.Int64Array `json:"projects_ids"`
 	Avatar       []byte        `json:"avatar"`
+	Status       string        `json:"status"`
 }
 
 type Project struct {
@@ -122,6 +123,7 @@ func main() {
 		projectRoutes.POST("/:id/addGrant", projectAddGrantHandler(db))
 		projectRoutes.DELETE("/:id/removeGrant", projectDeleteGrantHandler(db))
 		projectRoutes.POST("/:id/editGrant", projectEditGrantHandler(db))
+		projectRoutes.GET("/:id/usersOnline", projectUsersOnlineHandler(db))
 	}
 
 	// Группировка маршрутов для задач
@@ -142,6 +144,7 @@ func main() {
 		profileRoutes.POST("/:id/addProject", profileAddProjectHandler(db))
 		profileRoutes.GET("/:id/projects", profileProjectsHandler(db))
 		profileRoutes.DELETE("/:id", profileRemoveProjectHandler(db))
+		profileRoutes.POST("/:id/updateOnlineStatus", profileUpdateOnlineStatusHandler(db))
 	}
 
 	r.Run()
@@ -149,7 +152,7 @@ func main() {
 
 func startPageHandler() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		fmt.Print("Service is live")
+		fmt.Print("Service is live \n")
 	})
 }
 
@@ -162,9 +165,9 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		row := db.QueryRow("SELECT id, name, role, code, projects_ids, avatar FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
+		row := db.QueryRow("SELECT id, name, role, code, projects_ids, avatar, status FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
 
-		err := row.Scan(&user.ID, &user.Name, &user.Role, &user.Code, &user.Projects_ids, &user.Avatar)
+		err := row.Scan(&user.ID, &user.Name, &user.Role, &user.Code, &user.Projects_ids, &user.Avatar, &user.Status)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid login or password"})
@@ -696,6 +699,22 @@ func projectEditGrantHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
+// /projects/:id/usersOnline
+func projectUsersOnlineHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var users []User
+		err := db.Select(&users, `SELECT users.id, users.name, users.avatar FROM users WHERE $1 = ANY(users.projects_ids) AND users.status = 'online'`, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"users": users})
+	})
+}
+
 // /tasks/:id
 func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
@@ -942,5 +961,26 @@ func profileRemoveProjectHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Project removed from user"})
+	})
+}
+
+// /profile/:id/updateOnlineStatus
+func profileUpdateOnlineStatusHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var user User
+		if err := c.BindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE users SET status = $1 WHERE id = $2", user.Status, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Online status updated"})
 	})
 }

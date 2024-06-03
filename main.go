@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"os"
 
 	"encoding/base64"
 	"log"
@@ -17,15 +16,13 @@ import (
 )
 
 type User struct {
-	ID           int           `json:"id"`
-	Name         string        `json:"name"`
-	Role         string        `json:"role"`
-	Code         string        `json:"code"`
-	Login        string        `json:"login"`
-	Password     string        `json:"password"`
-	Projects_ids pq.Int64Array `json:"projects_ids"`
-	Avatar       []byte        `json:"avatar"`
-	Status       string        `json:"status"`
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Login    string `json:"login"`
+	Password string `json:"password"`
+	Avatar   []byte `json:"avatar"`
+	Status   string `json:"status"`
 }
 
 type Project struct {
@@ -70,17 +67,17 @@ type TaskResponse struct {
 
 func main() {
 	// Get environment variables
-	databaseHost := os.Getenv("DATABASE_HOST")
-	databaseUser := os.Getenv("DATABASE_USER")
-	databasePassword := os.Getenv("DATABASE_PASSWORD")
-	databasePort := "5432"
-	databaseName := os.Getenv("DATABASE_NAME")
+	// databaseHost := os.Getenv("DATABASE_HOST")
+	// databaseUser := os.Getenv("DATABASE_USER")
+	// databasePassword := os.Getenv("DATABASE_PASSWORD")
+	// databasePort := "5432"
+	// databaseName := os.Getenv("DATABASE_NAME")
 
-	// databaseHost := "localhost"
-	// databaseUser := "postgres"
-	// databasePort := "5433"
-	// databasePassword := "0921"
-	// databaseName := "postgres"
+	databaseHost := "localhost"
+	databaseUser := "postgres"
+	databasePort := "5433"
+	databasePassword := "0921"
+	databaseName := "postgres"
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", databaseHost, databasePort, databaseUser, databasePassword, databaseName)
 
@@ -165,9 +162,9 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		row := db.QueryRow("SELECT id, name, role, code, projects_ids, avatar, status FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
+		row := db.QueryRow("SELECT id, name, role, avatar, status FROM users WHERE login = $1 AND password = $2", user.Login, user.Password)
 
-		err := row.Scan(&user.ID, &user.Name, &user.Role, &user.Code, &user.Projects_ids, &user.Avatar, &user.Status)
+		err := row.Scan(&user.ID, &user.Name, &user.Role, &user.Avatar, &user.Status)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid login or password"})
@@ -178,7 +175,25 @@ func loginHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		user.Avatar = []byte(base64.StdEncoding.EncodeToString(user.Avatar))
-		c.JSON(http.StatusOK, gin.H{"user": user})
+
+		rows, err := db.Query("SELECT project_id FROM user_projects WHERE user_id = $1", user.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		var projectsIDs []int
+		for rows.Next() {
+			var id int
+			if err := rows.Scan(&id); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			projectsIDs = append(projectsIDs, id)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"user": user, "projects": projectsIDs})
 	})
 }
 
@@ -191,7 +206,7 @@ func registerHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec("INSERT INTO users (name, role, code, login, password) VALUES ($1, $2, $3, $4, $5)", user.Name, user.Role, user.Code, user.Login, user.Password)
+		_, err := db.Exec("INSERT INTO users (name, role, login, password, status) VALUES ($1, $2, $3, $4, $5)", user.Name, user.Role, user.Login, user.Password, user.Status)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -316,7 +331,7 @@ func projectDeleteHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err = db.Exec("UPDATE users SET projects_ids = array_remove(projects_ids, $1)", id)
+		_, err = db.Exec("DELETE FROM user_projects WHERE project_id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -384,22 +399,13 @@ func projectNewHandler(db *sqlx.DB) gin.HandlerFunc {
 				}
 			}
 
-			var projects_ids pq.Int64Array
-			err = db.Get(&projects_ids, "SELECT projects_ids FROM users WHERE id = $1", userID)
+			_, err = db.Exec("INSERT INTO user_projects (user_id, project_id) VALUES ($1, $2)", userID, projectID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				fmt.Println("error: ", err.Error())
 				return
 			}
 
-			projects_ids = append(projects_ids, int64(projectID))
-
-			_, err = db.Exec("UPDATE users SET projects_ids = $1 WHERE id = $2", projects_ids, userID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				fmt.Println("error: ", err.Error())
-				return
-			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Project " + project.Name + " added"})
@@ -503,7 +509,7 @@ func projectUsersHandler(db *sqlx.DB) gin.HandlerFunc {
 		id := c.Param("id")
 
 		var users []User
-		err := db.Select(&users, `SELECT users.id, users.name, users.role, users.code, users.projects_ids, users.avatar FROM users WHERE $1 = ANY(users.projects_ids)`, id)
+		err := db.Select(&users, `SELECT users.id, users.name, users.role, users.avatar FROM users left join user_projects on users.id = user_projects.user_id WHERE user_projects.project_id = $1`, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -529,13 +535,6 @@ func projectAddUserHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		var projects_ids pq.Int64Array
-		err = db.Get(&projects_ids, "SELECT projects_ids FROM users WHERE id = $1", userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
 		idStr := c.Param("id")
 		projectId, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -543,10 +542,14 @@ func projectAddUserHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		projects_ids = append(projects_ids, projectId)
-
-		_, err = db.Exec("UPDATE users SET projects_ids = $1 WHERE id = $2", projects_ids, userID)
+		_, err = db.Exec("INSERT INTO user_projects (user_id, project_id) VALUES ($1, $2)", userID, projectId)
 		if err != nil {
+			if pqErr, ok := err.(*pq.Error); ok {
+				if pqErr.Code == "23505" {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "User already in project"})
+					return
+				}
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -582,7 +585,7 @@ func projectDeleteUserHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err = db.Exec("UPDATE users SET projects_ids = array_remove(projects_ids, $1) WHERE id = $2", projectId, userID)
+		_, err = db.Exec("DELETE FROM user_projects WHERE user_id = $1 AND project_id = $2", userID, projectId)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			fmt.Println("error: ", err.Error())
@@ -705,7 +708,7 @@ func projectUsersOnlineHandler(db *sqlx.DB) gin.HandlerFunc {
 		id := c.Param("id")
 
 		var users []User
-		err := db.Select(&users, `SELECT users.id, users.name, users.avatar FROM users WHERE $1 = ANY(users.projects_ids) AND users.status = 'online'`, id)
+		err := db.Select(&users, `SELECT users.id, users.name, users.avatar FROM users left join user_projects on users.id = user_projects.user_id WHERE user_projects.project_id = $1 and users.status = 'online'`, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -806,6 +809,7 @@ func taskNewHandler(db *sqlx.DB) gin.HandlerFunc {
 
 		if err := c.BindJSON(&task); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
@@ -813,6 +817,7 @@ func taskNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			task.Name, task.Descr, task.Date, task.Date_act, task.Empl_id, task.Project_id, task.Status, task.Priority)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
@@ -830,7 +835,7 @@ func profileHandler(db *sqlx.DB) gin.HandlerFunc {
 		user.Password = ""
 		user.ID, _ = strconv.Atoi(id)
 
-		err := db.Get(&user, "SELECT name, role, code, projects_ids, avatar FROM users WHERE id = $1", id)
+		err := db.Get(&user, "SELECT name, role, avatar FROM users WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -878,23 +883,12 @@ func profileAddProjectHandler(db *sqlx.DB) gin.HandlerFunc {
 		id := c.Param("id")
 		project_id := c.Param("project_id")
 
-		var projects_ids pq.Int64Array
-		err := db.Get(&projects_ids, "SELECT projects_ids FROM users WHERE id = $1", id)
+		// INSERT INTO user_projects (user_id, project_id) VALUES ($1, $2)
+		_, err := db.Exec("INSERT INTO user_projects (user_id, project_id) VALUES ($1, $2)", id, project_id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		project_id_int, _ := strconv.Atoi(project_id)
-		projects_ids = append(projects_ids, int64(project_id_int))
-
-		_, err = db.Exec("UPDATE users SET projects_ids = $1 WHERE id = $2", projects_ids, id)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Project added to user"})
 	})
 }
 
@@ -905,43 +899,31 @@ func profileProjectsHandler(db *sqlx.DB) gin.HandlerFunc {
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
-		var projectsIDsStr string
-		err = db.Get(&projectsIDsStr, "SELECT projects_ids FROM users WHERE id = $1", id)
+		rows, err := db.Query("SELECT projects.id, projects.name FROM projects JOIN user_projects ON projects.id = user_projects.project_id WHERE user_projects.user_id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
+		defer rows.Close()
 
-		// Удалить фигурные скобки и разделить строку по запятой
-		projectsIDsStr = strings.Trim(projectsIDsStr, "{}")
-		projectsIDsArr := strings.Split(projectsIDsStr, ",")
-
-		// Преобразовать каждый элемент в int и добавить в projectIDs
-		var projectIDs []int
-		for _, idStr := range projectsIDsArr {
-			id, err := strconv.Atoi(idStr)
-			if err != nil {
+		var projects []map[string]interface{}
+		for rows.Next() {
+			var id int
+			var name string
+			if err := rows.Scan(&id, &name); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-			projectIDs = append(projectIDs, id)
-		}
-
-		query, args, err := sqlx.In("SELECT id, name FROM projects WHERE id IN (?)", projectIDs)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		query = db.Rebind(query)
-		var projects []Project
-		err = db.Select(&projects, query, args...)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+			project := map[string]interface{}{
+				"project_id":   id,
+				"project_name": name,
+			}
+			projects = append(projects, project)
 		}
 
 		c.JSON(http.StatusOK, gin.H{"projects": projects})
@@ -954,7 +936,7 @@ func profileRemoveProjectHandler(db *sqlx.DB) gin.HandlerFunc {
 		id := c.Param("id")
 		project_id := c.Param("project_id")
 
-		_, err := db.Exec("UPDATE users SET projects_ids = array_remove(projects_ids, $1) WHERE id = $2", project_id, id)
+		_, err := db.Exec("DELETE FROM user_projects WHERE user_id = $1 AND project_id = $2", id, project_id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

@@ -132,6 +132,7 @@ func main() {
 		taskRoutes.POST("/:id/updateStatus", taskStatusUpdateHandler(db))
 		taskRoutes.POST("/:id/assign/", taskAssignHandler(db))
 		taskRoutes.POST("/new", taskNewHandler(db))
+		taskRoutes.POST("/:id/updateInfo", taskInfoUpdateHandler(db))
 	}
 
 	// Профиль пользователя
@@ -823,6 +824,34 @@ func taskNewHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Task added"})
+	})
+}
+
+type TaskInfo struct {
+	Name  string `json:"name"`
+	Descr string `json:"descr"`
+}
+
+// /tasks/:id/updateInfo
+func taskInfoUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var task TaskInfo
+		if err := c.BindJSON(&task); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE tasks SET name = $1, descr = $2 WHERE id = $3",
+			task.Name, task.Descr, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Task info updated"})
 	})
 }
 

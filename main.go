@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
 
 	"encoding/base64"
 	"log"
@@ -67,17 +68,17 @@ type TaskResponse struct {
 
 func main() {
 	// Get environment variables
-	// databaseHost := os.Getenv("DATABASE_HOST")
-	// databaseUser := os.Getenv("DATABASE_USER")
-	// databasePassword := os.Getenv("DATABASE_PASSWORD")
-	// databasePort := "5432"
-	// databaseName := os.Getenv("DATABASE_NAME")
+	databaseHost := os.Getenv("DATABASE_HOST")
+	databaseUser := os.Getenv("DATABASE_USER")
+	databasePassword := os.Getenv("DATABASE_PASSWORD")
+	databasePort := "5432"
+	databaseName := os.Getenv("DATABASE_NAME")
 
-	databaseHost := "localhost"
-	databaseUser := "postgres"
-	databasePort := "5433"
-	databasePassword := "0921"
-	databaseName := "postgres"
+	// databaseHost := "localhost"
+	// databaseUser := "postgres"
+	// databasePort := "5433"
+	// databasePassword := "0921"
+	// databaseName := "postgres"
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", databaseHost, databasePort, databaseUser, databasePassword, databaseName)
 

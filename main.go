@@ -135,6 +135,7 @@ func main() {
 		taskRoutes.POST("/:id/assign/", taskAssignHandler(db))
 		taskRoutes.POST("/new", taskNewHandler(db))
 		taskRoutes.POST("/:id/updateInfo", taskInfoUpdateHandler(db))
+		taskRoutes.POST("/:id/updatePriority", taskPriorityUpdateHandler(db))
 	}
 
 	// Профиль пользователя
@@ -856,6 +857,27 @@ func taskInfoUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "Task info updated"})
+	})
+}
+
+// /tasks/:id/updatePriority
+func taskPriorityUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		var task Task
+		if err := c.BindJSON(&task); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		_, err := db.Exec("UPDATE tasks SET priority = $1 WHERE id = $2", task.Priority, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Task priority updated"})
 	})
 }
 

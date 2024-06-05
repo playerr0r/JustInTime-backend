@@ -868,6 +868,7 @@ func taskPriorityUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
 		var priority string
 		if err := c.BindJSON(&priority); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 

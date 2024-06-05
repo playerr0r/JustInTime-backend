@@ -865,19 +865,10 @@ func taskPriorityUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		id := c.Param("id")
 
-		var task Task
-		if err := c.BindJSON(&task); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			fmt.Println("error: ", err.Error())
-			return
-		}
-
 		var priority string
-
-		if task.Priority.Valid {
-			priority = task.Priority.String
-		} else {
-			priority = ""
+		if err := c.BindJSON(&priority); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 
 		_, err := db.Exec("UPDATE tasks SET priority = $1 WHERE id = $2", priority, id)

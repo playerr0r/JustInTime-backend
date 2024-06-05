@@ -43,6 +43,7 @@ type Task struct {
 	Project_id int            `json:"projectId"`
 	Status     string         `json:"status"`
 	Priority   sql.NullString `json:"priority"`
+	Creator_id int            `json:"creator_id"`
 }
 
 type Grant struct {
@@ -64,6 +65,7 @@ type TaskResponse struct {
 	Project_id int    `json:"projectId"`
 	Status     string `json:"status"`
 	Priority   string `json:"priority"`
+	Creator_id int    `json:"creator_id"`
 }
 
 func main() {
@@ -282,7 +284,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		projectID := c.Param("id")
 
 		var tasks []Task
-		err := db.Select(&tasks, `SELECT tasks.id, tasks.name, tasks.descr, tasks.date, tasks.date_act, tasks.empl_id, users.avatar, tasks.project_id, tasks.status, tasks.priority from tasks left join users on tasks.empl_id = users.id WHERE project_id = $1`, projectID)
+		err := db.Select(&tasks, `SELECT tasks.id, tasks.name, tasks.descr, tasks.date, tasks.date_act, tasks.empl_id, users.avatar, tasks.project_id, tasks.status, tasks.priority, tasks.creator_id from tasks left join users on tasks.empl_id = users.id WHERE project_id = $1`, projectID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -308,6 +310,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 				Project_id: task.Project_id,
 				Status:     task.Status,
 				Priority:   nullStringToString(task.Priority),
+				Creator_id: task.Creator_id,
 			}
 			tasksResponse = append(tasksResponse, taskResponse)
 		}
@@ -742,6 +745,7 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		taskResponse.Project_id = task.Project_id
 		taskResponse.Status = task.Status
 		taskResponse.Priority = nullStringToString(task.Priority)
+		taskResponse.Creator_id = task.Creator_id
 
 		c.JSON(http.StatusOK, gin.H{"task": taskResponse})
 	})
@@ -815,8 +819,8 @@ func taskNewHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec("INSERT INTO tasks (name, descr, date, date_act, empl_id, project_id, status, priority) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-			task.Name, task.Descr, task.Date, task.Date_act, task.Empl_id, task.Project_id, task.Status, task.Priority)
+		_, err := db.Exec("INSERT INTO tasks (name, descr, date, date_act, empl_id, project_id, status, priority, creator_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+			task.Name, task.Descr, task.Date, task.Date_act, task.Empl_id, task.Project_id, task.Status, task.Priority, task.Creator_id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			fmt.Println("error: ", err.Error())

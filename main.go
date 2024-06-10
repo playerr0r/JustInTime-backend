@@ -8,10 +8,16 @@ import (
 	"encoding/base64"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 )
@@ -66,6 +72,14 @@ type TaskResponse struct {
 	Status     string `json:"status"`
 	Priority   string `json:"priority"`
 	Creator_id int    `json:"creator_id"`
+	Files      []File `json:"files"`
+}
+
+type File struct {
+	ID       int    `json:"id"`
+	TaskID   int    `json:"task_id"`
+	Name     string `json:"name"`
+	FileUuid string `json:"file_uuid"`
 }
 
 func main() {
@@ -136,6 +150,7 @@ func main() {
 		taskRoutes.POST("/new", taskNewHandler(db))
 		taskRoutes.POST("/:id/updateInfo", taskInfoUpdateHandler(db))
 		taskRoutes.POST("/:id/updatePriority", taskPriorityUpdateHandler(db))
+		taskRoutes.POST("/:id/addFile", taskAddFileHandler(db))
 	}
 
 	// Профиль пользователя
@@ -147,6 +162,7 @@ func main() {
 		profileRoutes.GET("/:id/projects", profileProjectsHandler(db))
 		profileRoutes.DELETE("/:id", profileRemoveProjectHandler(db))
 		profileRoutes.POST("/:id/updateOnlineStatus", profileUpdateOnlineStatusHandler(db))
+		// uploadImageHandler())
 	}
 
 	r.Run()
@@ -288,6 +304,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		err := db.Select(&tasks, `SELECT tasks.id, tasks.name, tasks.descr, tasks.date, tasks.date_act, tasks.empl_id, users.avatar, tasks.project_id, tasks.status, tasks.priority, tasks.creator_id from tasks left join users on tasks.empl_id = users.id WHERE project_id = $1`, projectID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
@@ -295,6 +312,7 @@ func projectTasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		err = db.Select(&columns, "SELECT columns_ FROM projects WHERE id = $1", projectID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
@@ -733,6 +751,7 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		err := db.Get(&task, "SELECT * FROM tasks WHERE id = $1", id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
 
@@ -747,6 +766,28 @@ func tasksHandler(db *sqlx.DB) gin.HandlerFunc {
 		taskResponse.Status = task.Status
 		taskResponse.Priority = nullStringToString(task.Priority)
 		taskResponse.Creator_id = task.Creator_id
+
+		rows, err := db.Query("SELECT id, name, object_name FROM files WHERE task_id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+		defer rows.Close()
+
+		var files []File
+		for rows.Next() {
+			var file File
+			if err := rows.Scan(&file.ID, &file.Name, &file.FileUuid); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				fmt.Println("error: ", err.Error())
+				return
+			}
+			file.TaskID, _ = strconv.Atoi(id)
+			files = append(files, file)
+		}
+
+		taskResponse.Files = files
 
 		c.JSON(http.StatusOK, gin.H{"task": taskResponse})
 	})
@@ -887,6 +928,60 @@ func taskPriorityUpdateHandler(db *sqlx.DB) gin.HandlerFunc {
 	})
 }
 
+// /tasks/:id/addFile
+func taskAddFileHandler(db *sqlx.DB) gin.HandlerFunc {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		id := c.Param("id")
+
+		file, header, err := c.Request.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+		defer file.Close()
+
+		accessKey := os.Getenv("ACCESS_KEY")
+		secretKey := os.Getenv("SECRET_KEY")
+		bucketName := os.Getenv("BUCKET_NAME_FILES")
+		regionName := os.Getenv("REGION_NAME")
+		fileName := header.Filename
+		fileExt := filepath.Ext(fileName)
+		objectName := uuid.New().String() + fileExt
+
+		sess, err := session.NewSession(&aws.Config{
+			Region:      aws.String(regionName),
+			Credentials: credentials.NewStaticCredentials(accessKey, secretKey, ""),
+			Endpoint:    aws.String("https://storage.yandexcloud.net"),
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка создания сессии: " + err.Error()})
+			return
+		}
+
+		uploader := s3manager.NewUploader(sess)
+
+		_, err = uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(objectName),
+			Body:   file,
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		_, err = db.Exec("INSERT INTO files (task_id, object_name, name) VALUES ($1, $2, $3)", id, objectName, fileName)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "File added"})
+	})
+}
+
 // /profile/:id
 func profileHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
@@ -912,28 +1007,49 @@ type AvatarData struct {
 	Avatar string `json:"avatar"`
 }
 
-// /profile/:id/update_avatar/:avatar
+// /profile/:id/update_avatar
 func profileUpdateAvatarHandler(db *sqlx.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
-		id := c.Param("id")
-
-		var jsonData AvatarData
-		if err := c.BindJSON(&jsonData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		avatarDecoded, err := base64.StdEncoding.DecodeString(jsonData.Avatar)
+		// id := c.Param("id")
+		file, header, err := c.Request.FormFile("image")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+		defer file.Close()
+
+		accessKey := os.Getenv("ACCESS_KEY")
+		secretKey := os.Getenv("SECRET_KEY")
+		bucketName := os.Getenv("BUCKET_NAME_AVATARS")
+		regionName := os.Getenv("REGION_NAME")
+		objectName := header.Filename // Используем имя файла из заголовка
+
+		sess, err := session.NewSession(&aws.Config{
+			Region:      aws.String(regionName),
+			Credentials: credentials.NewStaticCredentials(accessKey, secretKey, ""),
+			Endpoint:    aws.String("https://storage.yandexcloud.net"),
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка создания сессии: " + err.Error()})
 			return
 		}
 
-		_, err = db.Exec("UPDATE users SET avatar = $1 WHERE id = $2", avatarDecoded, id)
+		uploader := s3manager.NewUploader(sess)
+
+		// Загрузка файла
+		_, err = uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(objectName),
+			Body:   file,
+		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
 			return
 		}
+
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Файл %s успешно загружен в бакет %s", objectName, bucketName)})
 
 		c.JSON(http.StatusOK, gin.H{"message": "Avatar updated"})
 	})
@@ -1027,4 +1143,50 @@ func profileUpdateOnlineStatusHandler(db *sqlx.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{"message": "Online status updated"})
 	})
+}
+
+func uploadImageHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		fmt.Println("uploadImageHandler")
+		file, header, err := c.Request.FormFile("image")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+		defer file.Close()
+
+		// Замените эти значения на свои
+		accessKey := "YCAJEhGTe99M4wEfo41iFV0Ew"
+		secretKey := "YCPRdMPLit3eTBg0JbGANdjjtwb6tn2FGYrPn5jl"
+		bucketName := "justontime-avatars"
+		regionName := "ru-central1"
+		objectName := header.Filename // Используем имя файла из заголовка
+
+		sess, err := session.NewSession(&aws.Config{
+			Region:      aws.String(regionName),
+			Credentials: credentials.NewStaticCredentials(accessKey, secretKey, ""),
+			Endpoint:    aws.String("https://storage.yandexcloud.net"),
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка создания сессии: " + err.Error()})
+			return
+		}
+
+		uploader := s3manager.NewUploader(sess)
+
+		// Загрузка файла
+		_, err = uploader.Upload(&s3manager.UploadInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(objectName),
+			Body:   file,
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			fmt.Println("error: ", err.Error())
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Файл %s успешно загружен в бакет %s", objectName, bucketName)})
+	}
 }

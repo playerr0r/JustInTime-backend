@@ -1157,9 +1157,9 @@ func uploadImageHandler() gin.HandlerFunc {
 		defer file.Close()
 
 		// Замените эти значения на свои
-		accessKey := "YCAJEhGTe99M4wEfo41iFV0Ew"
-		secretKey := "YCPRdMPLit3eTBg0JbGANdjjtwb6tn2FGYrPn5jl"
-		bucketName := "justontime-avatars"
+		accessKey := "test"
+		secretKey := "test"
+		bucketName := "test"
 		regionName := "ru-central1"
 		objectName := header.Filename // Используем имя файла из заголовка
 
